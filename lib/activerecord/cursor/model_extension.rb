@@ -7,36 +7,36 @@ module ActiveRecord
 
       module ClassMethods
         def cursor(options = {})
-          @options = default_options.merge!(options).symbolize_keys!
-          @options[:direction] =
-            if @options.key?(:start) || @options.key?(:stop)
-              @options.key?(:start) ? :start : :stop
+          Thread[:options] = default_options.merge!(options).symbolize_keys!
+          Thread[:options][:direction] =
+            if Thread[:options].key?(:start) || Thread[:options].key?(:stop)
+              Thread[:options].key?(:start) ? :start : :stop
             end
-          @cursor = Params.decode(@options[@options[:direction]]).value
-          @records = on_cursor.in_order.limit(@options[:size] + 1)
+          Thread[:cursor] = Params.decode(Thread[:options][Thread[:options][:direction]]).value
+          Thread[:records] = on_cursor.in_order.limit(Thread[:options][:size] + 1)
           set_cursor
-          @records
+          Thread[:records]
         rescue ActiveRecord::StatementInvalid
           raise Cursor::InvalidCursor
         end
 
         def next_cursor
-          @next
+          Thread[:next]
         end
 
         def prev_cursor
-          @prev
+          Thread[:prev]
         end
 
         def on_cursor
-          if @cursor.nil?
+          if Thread[:cursor].nil?
             where(nil)
           else
             where(
               "(#{column} = ? AND #{table_name}.id #{sign_of_inequality} ?) OR (#{column} #{sign_of_inequality} ?)",
-              @cursor[:key],
-              @cursor[:id],
-              @cursor[:key]
+              Thread[:cursor][:key],
+              Thread[:cursor][:id],
+              Thread[:cursor][:key]
             )
           end
         end
@@ -52,21 +52,21 @@ module ActiveRecord
         end
 
         def column
-          "#{table_name}.#{@options[:key]}"
+          "#{table_name}.#{Thread[:options][:key]}"
         end
 
         def sign_of_inequality
-          case @options[:reverse]
+          case Thread[:options][:reverse]
           when true
-            @options[:direction] == :start ? '<' : '>'
+            Thread[:options][:direction] == :start ? '<' : '>'
           when false
-            @options[:direction] == :start ? '>' : '<'
+            Thread[:options][:direction] == :start ? '>' : '<'
           end
         end
 
         def by
-          direction = @options[:direction]
-          case @options[:reverse]
+          direction = Thread[:options][:direction]
+          case Thread[:options][:reverse]
           when true
             direction == :start || direction.nil? ? 'desc' : 'asc'
           when false
@@ -75,41 +75,41 @@ module ActiveRecord
         end
 
         def set_cursor
-          @next = nil
-          @prev = nil
-          if @options[:direction] == :start
+          Thread[:next] = nil
+          Thread[:prev] = nil
+          if Thread[:options][:direction] == :start
             set_cursor_on_start
-          elsif @options[:direction] == :stop
+          elsif Thread[:options][:direction] == :stop
             set_cursor_on_stop
-          elsif @records.size == @options[:size] + 1
-            @records = @records.limit(@options[:size])
-            @next = generate_cursor(@records[@records.size - 1])
+          elsif Thread[:records].size == Thread[:options][:size] + 1
+            Thread[:records] = Thread[:records].limit(Thread[:options][:size])
+            Thread[:next] = generate_cursor(Thread[:records][Thread[:records].size - 1])
           end
         end
 
         def set_cursor_on_start
-          record = @records[0]
-          @prev = generate_cursor(record) if record
-          size = @records.size
-          @records = @records.limit(@options[:size])
-          return unless size == @options[:size] + 1
+          record = Thread[:records][0]
+          Thread[:prev] = generate_cursor(record) if record
+          size = Thread[:records].size
+          Thread[:records] = Thread[:records].limit(Thread[:options][:size])
+          return unless size == Thread[:options][:size] + 1
 
-          @next = generate_cursor(@records[@records.size - 1])
+          Thread[:next] = generate_cursor(Thread[:records][Thread[:records].size - 1])
         end
 
         def set_cursor_on_stop
-          record = @records[0]
-          @next = generate_cursor(record) if record
-          size = @records.size
+          record = Thread[:records][0]
+          Thread[:next] = generate_cursor(record) if record
+          size = Thread[:records].size
           reverse_by = by == 'asc' ? 'desc' : 'asc'
-          @records = @records.reorder("#{column} #{reverse_by}").limit(@options[:size])
-          return unless size == @options[:size] + 1
+          Thread[:records] = Thread[:records].reorder("#{column} #{reverse_by}").limit(Thread[:options][:size])
+          return unless size == Thread[:options][:size] + 1
 
-          @prev = generate_cursor(record)
+          Thread[:prev] = generate_cursor(record)
         end
 
         def generate_cursor(record)
-          Params.new(id: record.id, key: record.public_send(@options[:key])).encoded
+          Params.new(id: record.id, key: record.public_send(Thread[:options][:key])).encoded
         end
       end
     end
